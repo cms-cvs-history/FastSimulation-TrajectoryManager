@@ -1,0 +1,2 @@
+# Set to true to activate decays of unstable particles (K0S, etc...)
+	bool ActivateDecays = true
