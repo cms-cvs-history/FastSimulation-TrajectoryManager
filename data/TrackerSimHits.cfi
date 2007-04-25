@@ -1,7 +1,7 @@
 PSet TrackerSimHits = 
 {
 # Smallest charged particle pT for which SimHit's are saved (GeV/c)
-	untracked double pTmin = 0.5
+	untracked double pTmin = 0.8
 # Save SimHit's only for the first loop
 	untracked bool firstLoop = true
 }
