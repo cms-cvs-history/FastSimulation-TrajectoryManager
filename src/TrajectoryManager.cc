@@ -138,7 +138,7 @@ TrajectoryManager::reconstruct()
 {
 
   // Get pythia random state for decay (after saving current pythia state)
-  myDecayEngine->getRandom();
+  if ( myDecayEngine ) myDecayEngine->getRandom();
   
   // Clear the hits of the previous event
   //  thePSimHits->clear();
@@ -329,7 +329,7 @@ TrajectoryManager::reconstruct()
   if ( theMaterialEffects ) theMaterialEffects->save();
 
   // Save pythia random state for decay (and put pythia state for event generation back on the stack)
-  myDecayEngine->saveRandom();
+  if ( myDecayEngine ) myDecayEngine->saveRandom();
   
 }
 
