@@ -59,8 +59,8 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   myDecayEngine(0), 
   theGeomTracker(0),
   theGeomSearchTracker(0),
-  theLayerMap(56, static_cast<const DetLayer*>(0)), // reserve space for layers here
-  theNegLayerOffset(27),
+  theLayerMap(120, static_cast<const DetLayer*>(0)), // reserve space for layers here
+  theNegLayerOffset(51),
   //  myHistos(0),
   random(engine)
 
@@ -728,7 +728,7 @@ TrajectoryManager::initializeLayerMap()
 			    << (**fl).specificSurface().outerRadius(); 
   }
 
-  const float rTolerance = 0.5;
+  const float rTolerance = 0.4;
   const float zTolerance = 3.;
 
   LogDebug("FastTracker")<< "Dump of TrackerInteractionGeometry cylinders:";
