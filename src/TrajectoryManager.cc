@@ -69,7 +69,9 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   // Initialize Bthe stable particle decay engine 
   if ( decays.getParameter<bool>("ActivateDecays") ) { 
     int seed = (int) ( 900000000. * random->flatShoot() );
-    myDecayEngine = new Pythia6Decays(seed);
+    double comE = decays.getUntrackedParameter("comEnergy",14000.);
+
+    myDecayEngine = new Pythia6Decays(seed,comE);
   }
 
   // Initialize the Material Effects updator, if needed

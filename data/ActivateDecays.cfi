@@ -1,5 +1,7 @@
 PSet ActivateDecays = 
 {
 # Set to true to activate decays of unstable particles (K0S, etc...)
-	bool ActivateDecays = true
+   bool ActivateDecays = true
+   untracked double comEnergy = 14000.
+
 }
