@@ -1,5 +1,6 @@
-PSet ActivateDecays = 
-{
+block ActivateDecaysBlock = {
+  PSet ActivateDecays = 
+  {
     # Set to true to activate decays of unstable particles (K0S, etc...)
     bool ActivateDecays = true
     # Maximum angle to associate a charged daughter to a charged mother
@@ -8,4 +9,5 @@ PSet ActivateDecays =
     # Ahem, we initialize pythia with PYINIT, and this must be configurable...
     # (Temporary, until a better solution is found)
     untracked double comEnergy = 14000.
+  }
 }
