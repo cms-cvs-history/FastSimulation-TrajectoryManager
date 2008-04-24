@@ -8,6 +8,6 @@ block ActivateDecaysBlock = {
     double DistCut = 0.02 
     # Ahem, we initialize pythia with PYINIT, and this must be configurable...
     # (Temporary, until a better solution is found)
-    untracked double comEnergy = 14000.
+    double comEnergy = 14000.
   }
 }
