@@ -59,8 +59,8 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   myDecayEngine(0), 
   theGeomTracker(0),
   theGeomSearchTracker(0),
-  theLayerMap(56, static_cast<const DetLayer*>(0)), // reserve space for layers here
-  theNegLayerOffset(27),
+  theLayerMap(120, static_cast<const DetLayer*>(0)), // reserve space for layers here
+  theNegLayerOffset(51),
   //  myHistos(0),
   random(engine)
 
@@ -204,12 +204,13 @@ TrajectoryManager::reconstruct()
     } else if ( ppcos2T > 0.9998 && ( cyl == 0 || ppcos2V > 0.9998 ) ) { 
       cyliter = _theGeometry->cylinderEnd();
     }
-	
+
+    bool hack=false;
     // Loop over the cylinders
     while ( cyliter != _theGeometry->cylinderEnd() &&
 	    loop<100 &&                            // No more than 100 loops
 	    mySimEvent->track(fsimi).notYetToEndVertex(PP.vertex())) { // The particle decayed
-      
+   
       // Pathological cases:
       // To prevent from interacting twice in a row with the same layer
       //      bool escapeBarrel    = (PP.getSuccess() == -1 && success == 1);
@@ -240,10 +241,11 @@ TrajectoryManager::reconstruct()
 
       // Propagation was not successful :
       // Change the sign of the cylinder increment and count the loops
+     
       if ( !PP.propagateToBoundSurface(*cyliter) || 
 	   PP.getSuccess()<=0) {
-	sign = -sign;
-	++loop;
+	  sign = -sign;
+	  ++loop;
       }
 
       // The particle may have decayed on its way... in which the daughters
@@ -254,8 +256,10 @@ TrajectoryManager::reconstruct()
       // Exit by the endcaps or innermost cylinder :
       // Positive cylinder increment
       if ( PP.getSuccess()==2 || cyliter==_theGeometry->cylinderBegin() ) 
-	sign = +1; 
-	  
+	sign = +1;
+
+      if((cyliter->layerNumber()==6) && (fabs(PP.Z())>110)) hack=true;
+
       // Successful propagation to a cylinder, with some Material :
       if( PP.getSuccess() > 0 && PP.onFiducial() ) {
 
@@ -264,6 +268,7 @@ TrajectoryManager::reconstruct()
 	  PP.charge()!=0. &&                         // Consider only charged particles
 	  cyliter->sensitive() &&                    // Consider only sensitive layers
 	  PP.Perp2()>pTmin*pTmin;                    // Consider only pT > pTmin
+
 
         // Material effects are simulated there
 	if ( theMaterialEffects ) 
@@ -305,8 +310,10 @@ TrajectoryManager::reconstruct()
 
 	// Otherwise increment the cylinder iterator
 	//	do { 
-	if (sign==1) {++cyliter;++cyl;}
-	else         {--cyliter;--cyl;}
+	if(!hack){
+	  if (sign==1) {++cyliter;++cyl;}
+	  else         {--cyliter;--cyl;}
+	}
 
 	// Check if the last surface has been reached 
 	if( cyliter==_theGeometry->cylinderEnd()) {
@@ -335,7 +342,18 @@ TrajectoryManager::reconstruct()
 	}
       }
 
+      if(hack){
+	// Find the initial cylinder to propagate to.      
+	for ( ; cyliter != _theGeometry->cylinderEnd() ; ++cyliter ) {	  
+	  PP.setPropagationConditions(*cyliter);
+	  if ( PP.inside() && !PP.onSurface() ) break;
+	  ++cyl;
+	}
+	hack=false;
+      }
+
     }
+
 
     // Propagate all particles without a end vertex to the Preshower, 
     // theECAL and the HCAL.
@@ -768,7 +786,7 @@ TrajectoryManager::initializeLayerMap()
 			    << (**fl).specificSurface().outerRadius(); 
   }
 
-  const float rTolerance = 1.5;
+  const float rTolerance = 0.4;
   const float zTolerance = 3.;
 
   LogDebug("FastTracker")<< "Dump of TrackerInteractionGeometry cylinders:";
