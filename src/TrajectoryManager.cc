@@ -171,6 +171,7 @@ TrajectoryManager::reconstruct()
     cyliter = _theGeometry->cylinderBegin();
     // Prepare the propagation  
     ParticlePropagator PP(mySimEvent->track(fsimi),_theFieldMap,random);
+
     //The real work starts here
     int success = 1;
     int sign = +1;
@@ -197,19 +198,18 @@ TrajectoryManager::reconstruct()
     double ppcos2V =  PP.cos2ThetaV();
     if ( ( ppcos2T > 0.99 && ppcos2T < 0.9998 ) && ( cyl == 0 || ( ppcos2V > 0.99 && ppcos2V < 0.9998 ) ) ){ 
       if ( cyliter != _theGeometry->cylinderEnd() ) { 
-	cyliter = _theGeometry->cylinderEnd(); 
-	--cyliter;
+      cyliter = _theGeometry->cylinderEnd(); 
+      --cyliter;
       }
     // if above 0.9998: don't propagate at all (only to the calorimeters directly)
     } else if ( ppcos2T > 0.9998 && ( cyl == 0 || ppcos2V > 0.9998 ) ) { 
       cyliter = _theGeometry->cylinderEnd();
     }
-	
     // Loop over the cylinders
     while ( cyliter != _theGeometry->cylinderEnd() &&
 	    loop<100 &&                            // No more than 100 loops
 	    mySimEvent->track(fsimi).notYetToEndVertex(PP.vertex())) { // The particle decayed
-      
+
       // Pathological cases:
       // To prevent from interacting twice in a row with the same layer
       //      bool escapeBarrel    = (PP.getSuccess() == -1 && success == 1);
@@ -248,8 +248,8 @@ TrajectoryManager::reconstruct()
 
       // The particle may have decayed on its way... in which the daughters
       // have to be added to the event record
-      if ( PP.hasDecayed() || PP.PDGcTau()<1E-3 ) updateWithDaughters(PP,fsimi);
-      if ( PP.hasDecayed() || PP.PDGcTau()<1E-3 ) break;
+      if ( PP.hasDecayed() || PP.PDGcTau()<1E-3  ) updateWithDaughters(PP,fsimi);
+      if ( PP.hasDecayed() || PP.PDGcTau()<1E-3  ) break;
 
       // Exit by the endcaps or innermost cylinder :
       // Positive cylinder increment
@@ -491,7 +491,6 @@ TrajectoryManager::createPSimHits(const TrackerLayer& layer,
 
   typedef GeometricSearchDet::DetWithState   DetWithState;
   const DetLayer* tkLayer = detLayer(layer,PP.Z());
-
   TrajectoryStateOnSurface trajState = makeTrajectoryState( tkLayer, PP, &mf);
   float thickness = theMaterialEffects ? theMaterialEffects->thickness() : 0.;
   float eloss = theMaterialEffects ? theMaterialEffects->energyLoss() : 0.;
@@ -768,7 +767,7 @@ TrajectoryManager::initializeLayerMap()
 			    << (**fl).specificSurface().outerRadius(); 
   }
 
-  const float rTolerance = 1.5;
+  const float rTolerance = 0.9;
   const float zTolerance = 3.;
 
   LogDebug("FastTracker")<< "Dump of TrackerInteractionGeometry cylinders:";
