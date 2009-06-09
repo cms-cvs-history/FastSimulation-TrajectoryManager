@@ -59,8 +59,8 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   myDecayEngine(0), 
   theGeomTracker(0),
   theGeomSearchTracker(0),
-  theLayerMap(56, static_cast<const DetLayer*>(0)), // reserve space for layers here
-  theNegLayerOffset(27),
+  theLayerMap(120, static_cast<const DetLayer*>(0)), // reserve space for layers here
+  theNegLayerOffset(51),
   //  myHistos(0),
   random(engine)
 
@@ -205,6 +205,7 @@ TrajectoryManager::reconstruct()
       cyliter = _theGeometry->cylinderEnd();
     }
 	
+    bool hack_makehit = true;
     // Loop over the cylinders
     while ( cyliter != _theGeometry->cylinderEnd() &&
 	    loop<100 &&                            // No more than 100 loops
@@ -256,6 +257,9 @@ TrajectoryManager::reconstruct()
       if ( PP.getSuccess()==2 || cyliter==_theGeometry->cylinderBegin() ) 
 	sign = +1; 
 	  
+      // for short (ring) stack layers don't make a hit, just continue propagation with scattering
+      if((cyliter->layerNumber()>=32) && (cyliter->layerNumber()<=35) && (fabs(PP.Z())<209.46)) hack_makehit = false;
+
       // Successful propagation to a cylinder, with some Material :
       if( PP.getSuccess() > 0 && PP.onFiducial() ) {
 
@@ -263,6 +267,7 @@ TrajectoryManager::reconstruct()
 	  ( (loop==0 && sign>0) || !firstLoop ) &&   // Save only first half loop
 	  PP.charge()!=0. &&                         // Consider only charged particles
 	  cyliter->sensitive() &&                    // Consider only sensitive layers
+          hack_makehit &&                            // Not in middle of short (ring) layers
 	  PP.Perp2()>pTmin*pTmin;                    // Consider only pT > pTmin
 
         // Material effects are simulated there
@@ -334,6 +339,8 @@ TrajectoryManager::reconstruct()
 
 	}
       }
+
+      hack_makehit = true;
 
     }
 
@@ -768,7 +775,7 @@ TrajectoryManager::initializeLayerMap()
 			    << (**fl).specificSurface().outerRadius(); 
   }
 
-  const float rTolerance = 1.5;
+  const float rTolerance = 0.4;
   const float zTolerance = 3.;
 
   LogDebug("FastTracker")<< "Dump of TrackerInteractionGeometry cylinders:";
