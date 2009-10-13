@@ -62,7 +62,8 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   theLayerMap(120, static_cast<const DetLayer*>(0)), // reserve space for layers here
   theNegLayerOffset(51),
   //  myHistos(0),
-  random(engine)
+  random(engine),
+  theMinZ(0.)
 
 {
   
@@ -116,6 +117,32 @@ TrajectoryManager::initializeRecoGeometry(const GeometricSearchTracker* geomSear
   // Initialize the magnetic field
   _theFieldMap = aFieldMap;
 
+  std::vector<BarrelDetLayer*> layers = geomSearchTracker->pixelBarrelLayers();
+  std::vector<const GeomDet*> dets=layers[0]->basicComponents();
+  for (unsigned int i=1, sz=dets.size(); i<layers.size(); ++i)
+    { dets=layers[i]->basicComponents();
+    unsigned int ndets=dets.size();
+    if (ndets >= sz)
+      { sz=ndets;}
+    else
+      {
+        break;
+      } //Stop at first layer with fewer dets than the one preceding. Not foolproof...
+    }
+
+  double minz = 1000000.; //10 km :-0!
+  unsigned int mindet = 0;
+  for (unsigned int i=0; i<dets.size(); ++i)
+    { double myz=dets[i]->position().z();
+    if ( (myz > 0.) && (myz < minz))
+      { minz = myz;
+      mindet = i;
+      }
+    }
+  //std::pair<float,float> zspan = dets[mindet]->surface().zSpan();
+  //theMinZ = zspan.first;
+  theMinZ = dets[mindet]->surface().zSpan().first;
+  std::cout << " ***** TRAJECTORY init with theMinZ(209.46) = " << theMinZ << std::endl;
 }
 
 void 
@@ -258,7 +285,7 @@ TrajectoryManager::reconstruct()
 	sign = +1; 
 	  
       // for short (ring) stack layers don't make a hit, just continue propagation with scattering
-      if((cyliter->layerNumber()>=32) && (cyliter->layerNumber()<=35) && (fabs(PP.Z())<209.46)) hack_makehit = false;
+      if((cyliter->layerNumber()>=32) && (cyliter->layerNumber()<=35) && (fabs(PP.Z())<theMinZ)) hack_makehit = false;
 
       // Successful propagation to a cylinder, with some Material :
       if( PP.getSuccess() > 0 && PP.onFiducial() ) {

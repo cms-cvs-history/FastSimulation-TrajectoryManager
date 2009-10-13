@@ -153,6 +153,6 @@ class TrajectoryManager
   //  Histos* myHistos;
 
   const RandomEngine* random;
-
+  double                                     theMinZ;
 };
 #endif
