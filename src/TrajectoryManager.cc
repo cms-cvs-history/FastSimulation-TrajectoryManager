@@ -29,7 +29,6 @@
 #include "FastSimulation/Event/interface/KineParticleFilter.h"
 
 #include "FastSimulation/Utilities/interface/RandomEngine.h"
-
 //#include "FastSimulation/Utilities/interface/Histos.h"
 //#include "FastSimulation/Utilities/interface/FamosLooses.h"
 // Numbering scheme
@@ -60,18 +59,19 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   myDecayEngine(0), 
   theGeomTracker(0),
   theGeomSearchTracker(0),
-  theLayerMap(56, static_cast<const DetLayer*>(0)), // reserve space for layers here
-  theNegLayerOffset(27),
+  theLayerMap(120, static_cast<const DetLayer*>(0)), // reserve space for layers here
+  theNegLayerOffset(51),
   //  myHistos(0),
-  random(engine)
+  random(engine),
+  theMinZ(0.)
 
 {
   
   // Initialize Bthe stable particle decay engine 
   if ( decays.getParameter<bool>("ActivateDecays") ) { 
-//    int seed = (int) ( 900000000. * random->flatShoot() );
-//    double comE = decays.getParameter<double>("comEnergy");
-//    myDecayEngine = new Pythia6Decays(seed,comE);
+    //    int seed = (int) ( 900000000. * random->flatShoot() );
+    //    double comE = decays.getParameter<double>("comEnergy");
+    //    myDecayEngine = new Pythia6Decays(seed,comE);
     myDecayEngine = new Pythia6Decays();
     distCut = decays.getParameter<double>("DistCut");
   }
@@ -80,7 +80,7 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   if ( matEff.getParameter<bool>("PairProduction") || 
        matEff.getParameter<bool>("Bremsstrahlung") ||
        matEff.getParameter<bool>("EnergyLoss") || 
-       matEff.getParameter<bool>("MultipleScattering") || 
+       matEff.getParameter<bool>("MultipleScattering") ||
        matEff.getParameter<bool>("NuclearInteraction")
        )
        theMaterialEffects = new MaterialEffects(matEff,random);
@@ -120,6 +120,32 @@ TrajectoryManager::initializeRecoGeometry(const GeometricSearchTracker* geomSear
   // Initialize the magnetic field
   _theFieldMap = aFieldMap;
 
+  std::vector<BarrelDetLayer*> layers = geomSearchTracker->pixelBarrelLayers();
+  std::vector<const GeomDet*> dets=layers[0]->basicComponents();
+  for (unsigned int i=1, sz=dets.size(); i<layers.size(); ++i)
+    { dets=layers[i]->basicComponents();
+    unsigned int ndets=dets.size();
+    if (ndets >= sz)
+      { sz=ndets;}
+    else
+      {
+        break;
+      } //Stop at first layer with fewer dets than the one preceding. Not foolproof...
+    }
+
+  double minz = 1000000.; //10 km :-0!
+  unsigned int mindet = 0;
+  for (unsigned int i=0; i<dets.size(); ++i)
+    { double myz=dets[i]->position().z();
+    if ( (myz > 0.) && (myz < minz))
+      { minz = myz;
+      mindet = i;
+      }
+    }
+  //std::pair<float,float> zspan = dets[mindet]->surface().zSpan();
+  //theMinZ = zspan.first;
+  theMinZ = dets[mindet]->surface().zSpan().first;
+  std::cout << " ***** TRAJECTORY init with theMinZ(209.46) = " << theMinZ << std::endl;
 }
 
 void 
@@ -149,24 +175,26 @@ void
 TrajectoryManager::reconstruct()
 {
 
+  // Get pythia random state for decay (after saving current pythia state)
+  //if ( myDecayEngine ) myDecayEngine->getRandom();
+  // Removed in porting idr 22/09/09
+
   // Clear the hits of the previous event
   //  thePSimHits->clear();
   thePSimHits.clear();
 
   // The new event
-  XYZTLorentzVector myBeamPipe = XYZTLorentzVector(0.,2.5, 9999999.,0.);
+  XYZTLorentzVector myBeamPipe = XYZTLorentzVector(0.,25., 9999999.,0.);
 
   std::list<TrackerLayer>::const_iterator cyliter;
 
-  // bool debug = mySimEvent->id().event() == 8;
+  //  bool debug = mySimEvent->id().event() == 3;
 
   // Loop over the particles (watch out: increasing upper limit!)
   for( int fsimi=0; fsimi < (int) mySimEvent->nTracks(); ++fsimi) {
 
     // If the particle has decayed inside the beampipe, or decays 
     // immediately, there is nothing to do
-    //if ( debug ) std::cout << mySimEvent->track(fsimi) << std::endl;
-    //if ( debug ) std::cout << "Not yet at end vertex ? " << mySimEvent->track(fsimi).notYetToEndVertex(myBeamPipe) << std::endl;
     if( !mySimEvent->track(fsimi).notYetToEndVertex(myBeamPipe) ) continue;
     mySimEvent->track(fsimi).setPropagate();
 
@@ -208,16 +236,11 @@ TrajectoryManager::reconstruct()
       cyliter = _theGeometry->cylinderEnd();
     }
 	
+    bool hack_makehit = true;
     // Loop over the cylinders
     while ( cyliter != _theGeometry->cylinderEnd() &&
 	    loop<100 &&                            // No more than 100 loops
 	    mySimEvent->track(fsimi).notYetToEndVertex(PP.vertex())) { // The particle decayed
-
-      // Skip layers with no material (kept just for historical reasons)
-      if ( cyliter->surface().mediumProperties()->radLen() < 1E-10 ) { 
-	++cyliter; ++cyl;
-	continue;
-      }
       
       // Pathological cases:
       // To prevent from interacting twice in a row with the same layer
@@ -257,16 +280,17 @@ TrajectoryManager::reconstruct()
 
       // The particle may have decayed on its way... in which the daughters
       // have to be added to the event record
-      if ( PP.hasDecayed() || (!mySimEvent->track(fsimi).nDaughters() && PP.PDGcTau()<1E-3 ) ) { 
-	updateWithDaughters(PP,fsimi);
-	break;
-      }
+      if ( PP.hasDecayed() || PP.PDGcTau()<1E-3 ) updateWithDaughters(PP,fsimi);
+      if ( PP.hasDecayed() || PP.PDGcTau()<1E-3 ) break;
 
       // Exit by the endcaps or innermost cylinder :
       // Positive cylinder increment
       if ( PP.getSuccess()==2 || cyliter==_theGeometry->cylinderBegin() ) 
 	sign = +1; 
 	  
+      // for short (ring) stack layers don't make a hit, just continue propagation with scattering
+      if((cyliter->layerNumber()>=32) && (cyliter->layerNumber()<=35) && (fabs(PP.Z())<theMinZ)) hack_makehit = false;
+
       // Successful propagation to a cylinder, with some Material :
       if( PP.getSuccess() > 0 && PP.onFiducial() ) {
 
@@ -274,6 +298,7 @@ TrajectoryManager::reconstruct()
 	  ( (loop==0 && sign>0) || !firstLoop ) &&   // Save only first half loop
 	  PP.charge()!=0. &&                         // Consider only charged particles
 	  cyliter->sensitive() &&                    // Consider only sensitive layers
+          hack_makehit &&                            // Not in middle of short (ring) layers
 	  PP.Perp2()>pTmin*pTmin;                    // Consider only pT > pTmin
 
         // Material effects are simulated there
@@ -346,6 +371,8 @@ TrajectoryManager::reconstruct()
 	}
       }
 
+      hack_makehit = true;
+
     }
 
     // Propagate all particles without a end vertex to the Preshower, 
@@ -358,6 +385,10 @@ TrajectoryManager::reconstruct()
   // Save the information from Nuclear Interaction Generation
   if ( theMaterialEffects ) theMaterialEffects->save();
 
+  // Save pythia random state for decay (and put pythia state for event generation back on the stack)
+  //if ( myDecayEngine ) myDecayEngine->saveRandom();
+  // Removed in porting idr 22/09/09
+  
 }
 
 void 
@@ -448,91 +479,39 @@ TrajectoryManager::propagateToLayer(ParticlePropagator& PP, unsigned layer) {
 void
 TrajectoryManager::updateWithDaughters(ParticlePropagator& PP, int fsimi) {
 
+  // Decays are not activated : do nothing
+  if ( !myDecayEngine ) return;
 
-  // The particle was already decayed in the GenEvent, but still the particle was 
-  // allowed to propagate (for magnetic field bending, for material effects, etc...)
-  // Just modify the momentum of the daughters in that case 
-  unsigned nDaugh = mySimEvent->track(fsimi).nDaughters();
-  if ( nDaugh ) {
-
-    // Move the vertex
-    unsigned vertexId = mySimEvent->track(fsimi).endVertex().id();
-    mySimEvent->vertex(vertexId).setPosition(PP.vertex());
-
-    // Before-propagation and after-propagation momentum and vertex position
-    XYZTLorentzVector momentumBefore = mySimEvent->track(fsimi).momentum();
-    XYZTLorentzVector momentumAfter = PP.momentum();
-    double magBefore = std::sqrt(momentumBefore.Vect().mag2());
-    double magAfter = std::sqrt(momentumAfter.Vect().mag2());
-    // Rotation to be applied
-    XYZVector axis = momentumBefore.Vect().Cross(momentumAfter.Vect());
-    double angle = std::acos(momentumBefore.Vect().Dot(momentumAfter.Vect())/(magAfter*magBefore));
-    Rotation r(axis,angle);
-    // Rescaling to be applied
-    double rescale = magAfter/magBefore;
-
-    // Move, rescale and rotate daugthers, grand-daughters, etc. 
-    moveAllDaughters(fsimi,r,rescale);
-
-  // The particle is not decayed in the GenEvent, decay it with PYTHIA 
-  } else { 
-
-    // Decays are not activated : do nothing
-    if ( !myDecayEngine ) return;
+  // Invoke PYDECY to decay the particle and get the daughters
+  const DaughterParticleList& daughters = myDecayEngine->particleDaughters(PP);
+  
+  // Update the FSimEvent with an end vertex and with the daughters
+  if ( daughters.size() ) { 
+    double distMin = 1E99;
+    int theClosestChargedDaughterId = -1;
+    DaughterParticleIterator daughter = daughters.begin();
     
-    // Invoke PYDECY to decay the particle and get the daughters
-    const DaughterParticleList& daughters = myDecayEngine->particleDaughters(PP);
-    
-    // Update the FSimEvent with an end vertex and with the daughters
-    if ( daughters.size() ) { 
-      double distMin = 1E99;
-      int theClosestChargedDaughterId = -1;
-      DaughterParticleIterator daughter = daughters.begin();
-      
-      int ivertex = mySimEvent->addSimVertex(daughter->vertex(),fsimi, 
-					     FSimVertexType::DECAY_VERTEX);
-      
-      if ( ivertex != -1 ) {
-	for ( ; daughter != daughters.end(); ++daughter) {
-	  int theDaughterId = mySimEvent->addSimTrack(&(*daughter), ivertex);
-	  // Find the closest charged daughter (if charged mother)
-	  if ( PP.charge() * daughter->charge() > 1E-10 ) {
-	    double dist = (daughter->Vect().Unit().Cross(PP.Vect().Unit())).R();
-	    if ( dist < distCut && dist < distMin ) { 
-	      distMin = dist;
-	      theClosestChargedDaughterId = theDaughterId;
-	    }
+    int ivertex = mySimEvent->addSimVertex(daughter->vertex(),fsimi, FSimVertexType::DECAY_VERTEX);
+
+    if ( ivertex != -1 ) {
+      for ( ; daughter != daughters.end(); ++daughter) {
+	int theDaughterId = mySimEvent->addSimTrack(&(*daughter), ivertex);
+	// Find the closest charged daughter (if charged mother)
+	if ( PP.charge() * daughter->charge() > 1E-10 ) {
+	  double dist = (daughter->Vect().Unit().Cross(PP.Vect().Unit())).R();
+	  if ( dist < distCut && dist < distMin ) { 
+	    distMin = dist;
+	    theClosestChargedDaughterId = theDaughterId;
 	  }
 	}
       }
-      // Attach mother and closest daughter sp as to cheat tracking ;-)
-      if ( theClosestChargedDaughterId >=0 ) 
-	mySimEvent->track(fsimi).setClosestDaughterId(theClosestChargedDaughterId);
     }
-
-  }
-
-}
-
-
-void
-TrajectoryManager::moveAllDaughters(int fsimi, const Rotation& r, double rescale) { 
-
-  //
-  for ( unsigned idaugh=0; idaugh < (unsigned)(mySimEvent->track(fsimi).nDaughters()); ++idaugh) { 
-    // Initial momentum of the daughter
-    XYZTLorentzVector daughMomentum (mySimEvent->track(fsimi).daughter(idaugh).momentum()); 
-    // Rotate and rescale
-    XYZVector newMomentum (r * daughMomentum.Vect()); 
-    newMomentum *= rescale;
-    double newEnergy = std::sqrt(newMomentum.mag2() + daughMomentum.mag2());
-    // Set the new momentum
-    mySimEvent->track(fsimi).setMomentum(XYZTLorentzVector(newMomentum.X(),newMomentum.Y(),newMomentum.Z(),newEnergy));
-    // Watch out : recursive call to get all grand-daughters
-    int fsimDaug = mySimEvent->track(fsimi).daughter(idaugh).id();
-    moveAllDaughters(fsimDaug,r,rescale);
+    // Attach mother and closest daughter sp as to cheat tracking ;-)
+    if ( theClosestChargedDaughterId >=0 ) 
+      mySimEvent->track(fsimi).setClosestDaughterId(theClosestChargedDaughterId);
   }
 }
+
 
 void
 TrajectoryManager::createPSimHits(const TrackerLayer& layer,
@@ -828,7 +807,7 @@ TrajectoryManager::initializeLayerMap()
 			    << (**fl).specificSurface().outerRadius(); 
   }
 
-  const float rTolerance = 1.5;
+  const float rTolerance = 0.4;
   const float zTolerance = 3.;
 
   LogDebug("FastTracking")<< "Dump of TrackerInteractionGeometry cylinders:";
@@ -856,7 +835,7 @@ TrajectoryManager::initializeLayerMap()
 	}
       }
       if (!found) {
-	edm::LogWarning("FastTracking") << " Trajectory manager FAILED to find a corresponding DetLayer!";
+	edm::LogWarning("FastTracking") << "FAILED to find a corresponding DetLayer!";
       }
     }
     else {
