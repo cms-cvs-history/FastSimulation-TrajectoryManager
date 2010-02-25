@@ -60,8 +60,8 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   myDecayEngine(0), 
   theGeomTracker(0),
   theGeomSearchTracker(0),
-  theLayerMap(56, static_cast<const DetLayer*>(0)), // reserve space for layers here
-  theNegLayerOffset(27),
+  theLayerMap(120, static_cast<const DetLayer*>(0)), // reserve space for layers here
+  theNegLayerOffset(51),
   //  myHistos(0),
   random(engine)
 
@@ -208,6 +208,7 @@ TrajectoryManager::reconstruct()
       cyliter = _theGeometry->cylinderEnd();
     }
 	
+    bool hack=false;
     // Loop over the cylinders
     while ( cyliter != _theGeometry->cylinderEnd() &&
 	    loop<100 &&                            // No more than 100 loops
@@ -266,6 +267,8 @@ TrajectoryManager::reconstruct()
       // Positive cylinder increment
       if ( PP.getSuccess()==2 || cyliter==_theGeometry->cylinderBegin() ) 
 	sign = +1; 
+
+      if((cyliter->layerNumber()==6) && (fabs(PP.Z())>110)) hack=true;
 	  
       // Successful propagation to a cylinder, with some Material :
       if( PP.getSuccess() > 0 && PP.onFiducial() ) {
@@ -316,8 +319,10 @@ TrajectoryManager::reconstruct()
 
 	// Otherwise increment the cylinder iterator
 	//	do { 
-	if (sign==1) {++cyliter;++cyl;}
-	else         {--cyliter;--cyl;}
+        if(!hack){
+          if (sign==1) {++cyliter;++cyl;}
+          else         {--cyliter;--cyl;}
+        }
 
 	// Check if the last surface has been reached 
 	if( cyliter==_theGeometry->cylinderEnd()) {
@@ -344,6 +349,15 @@ TrajectoryManager::reconstruct()
 	    updateWithDaughters(PP,fsimi);
 
 	}
+      }
+      if(hack){
+	// Find the initial cylinder to propagate to.      
+	for ( ; cyliter != _theGeometry->cylinderEnd() ; ++cyliter ) {	  
+	  PP.setPropagationConditions(*cyliter);
+	  if ( PP.inside() && !PP.onSurface() ) break;
+	  ++cyl;
+	}
+	hack=false;
       }
 
     }
@@ -828,7 +842,7 @@ TrajectoryManager::initializeLayerMap()
 			    << (**fl).specificSurface().outerRadius(); 
   }
 
-  const float rTolerance = 1.5;
+  const float rTolerance = 0.4;
   const float zTolerance = 3.;
 
   LogDebug("FastTracking")<< "Dump of TrackerInteractionGeometry cylinders:";
