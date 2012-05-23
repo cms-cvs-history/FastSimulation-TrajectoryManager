@@ -29,7 +29,6 @@
 #include "FastSimulation/Event/interface/KineParticleFilter.h"
 
 #include "FastSimulation/Utilities/interface/RandomEngine.h"
-
 //#include "FastSimulation/Utilities/interface/Histos.h"
 //#include "FastSimulation/Utilities/interface/FamosLooses.h"
 // Numbering scheme
@@ -63,7 +62,8 @@ TrajectoryManager::TrajectoryManager(FSimEvent* aSimEvent,
   theLayerMap(120, static_cast<const DetLayer*>(0)), // reserve space for layers here
   theNegLayerOffset(51),
   //  myHistos(0),
-  random(engine)
+  random(engine),
+  theMinZ(0.)
 
 {
   
@@ -121,6 +121,32 @@ TrajectoryManager::initializeRecoGeometry(const GeometricSearchTracker* geomSear
   // Initialize the magnetic field
   _theFieldMap = aFieldMap;
 
+  std::vector<BarrelDetLayer*> layers = geomSearchTracker->pixelBarrelLayers();
+  std::vector<const GeomDet*> dets=layers[0]->basicComponents();
+  for (unsigned int i=1, sz=dets.size(); i<layers.size(); ++i)
+    { dets=layers[i]->basicComponents();
+    unsigned int ndets=dets.size();
+    if (ndets >= sz)
+      { sz=ndets;}
+    else
+      {
+        break;
+      } //Stop at first layer with fewer dets than the one preceding. Not foolproof...
+    }
+
+  double minz = 1000000.; //10 km :-0!
+  unsigned int mindet = 0;
+  for (unsigned int i=0; i<dets.size(); ++i)
+    { double myz=dets[i]->position().z();
+    if ( (myz > 0.) && (myz < minz))
+      { minz = myz;
+      mindet = i;
+      }
+    }
+  //std::pair<float,float> zspan = dets[mindet]->surface().zSpan();
+  //theMinZ = zspan.first;
+  theMinZ = dets[mindet]->surface().zSpan().first;
+  std::cout << " ***** TRAJECTORY init with theMinZ(209.46) = " << theMinZ << std::endl;
 }
 
 void 
@@ -209,6 +235,7 @@ TrajectoryManager::reconstruct()
       cyliter = _theGeometry->cylinderEnd();
     }
 	
+    bool hack_makehit = true;
     // Loop over the cylinders
     while ( cyliter != _theGeometry->cylinderEnd() &&
 	    loop<100 &&                            // No more than 100 loops
@@ -268,6 +295,9 @@ TrajectoryManager::reconstruct()
       if ( PP.getSuccess()==2 || cyliter==_theGeometry->cylinderBegin() ) 
 	sign = +1; 
 	  
+      // for short (ring) stack layers don't make a hit, just continue propagation with scattering
+      if((cyliter->layerNumber()>=34) && (cyliter->layerNumber()<=37) && (fabs(PP.Z())<theMinZ)) hack_makehit = false;
+
       // Successful propagation to a cylinder, with some Material :
       if( PP.getSuccess() > 0 && PP.onFiducial() ) {
 
@@ -275,6 +305,7 @@ TrajectoryManager::reconstruct()
 	  ( (loop==0 && sign>0) || !firstLoop ) &&   // Save only first half loop
 	  PP.charge()!=0. &&                         // Consider only charged particles
 	  cyliter->sensitive() &&                    // Consider only sensitive layers
+          hack_makehit &&                            // Not in middle of short (ring) layers
 	  PP.Perp2()>pTmin*pTmin;                    // Consider only pT > pTmin
 
         // Material effects are simulated there
@@ -349,6 +380,8 @@ TrajectoryManager::reconstruct()
 
 	}
       }
+
+      hack_makehit = true;
 
     }
 
@@ -832,7 +865,7 @@ TrajectoryManager::initializeLayerMap()
 			    << (**fl).specificSurface().outerRadius(); 
   }
 
-  const float rTolerance = 1.5;
+  const float rTolerance = 0.4;
   const float zTolerance = 3.;
 
   LogDebug("FastTracking")<< "Dump of TrackerInteractionGeometry cylinders:";
